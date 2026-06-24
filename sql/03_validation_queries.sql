@@ -1,57 +1,58 @@
 USE chatbi_mvp;
 
--- 1. 验证核心表数据量
-SELECT 'dim_customers' AS table_name, COUNT(*) AS row_count FROM dim_customers
-UNION ALL
-SELECT 'dim_products' AS table_name, COUNT(*) AS row_count FROM dim_products
-UNION ALL
-SELECT 'exchange_rates' AS table_name, COUNT(*) AS row_count FROM exchange_rates
-UNION ALL
-SELECT 'sales_orders' AS table_name, COUNT(*) AS row_count FROM sales_orders
-UNION ALL
-SELECT 'finance_expenses' AS table_name, COUNT(*) AS row_count FROM finance_expenses;
-
--- 2. 已完成订单数量
-SELECT COUNT(*) AS completed_order_count
-FROM sales_orders
-WHERE order_status = 'completed';
-
--- 3. 按客户类型统计订单数量
+-- 验证 1：按订单状态统计
 SELECT
-    c.customer_type,
-    COUNT(*) AS order_count
-FROM sales_orders o
-JOIN dim_customers c ON o.customer_id = c.customer_id
-WHERE o.order_status = 'completed'
-GROUP BY c.customer_type
-ORDER BY order_count DESC;
+    order_status,
+    COUNT(*) AS order_count,
+    SUM(net_amount) AS total_net_amount
+FROM sales_orders
+GROUP BY order_status;
 
--- 4. 按产品线统计不含税收入
+-- 验证 2：按产品线汇总收入
 SELECT
     p.product_line,
+    COUNT(DISTINCT o.order_id) AS order_count,
+    SUM(o.quantity) AS total_quantity,
     SUM(o.net_amount) AS total_revenue
 FROM sales_orders o
 JOIN dim_products p ON o.product_id = p.product_id
 WHERE o.order_status = 'completed'
-GROUP BY p.product_line
-ORDER BY total_revenue DESC;
+GROUP BY p.product_line;
 
--- 5. 按区域统计人民币折算收入
+-- 验证 3：按区域汇总人民币收入（含汇率转换）
 SELECT
-    o.region,
-    SUM(o.net_amount * r.rate_to_cny) AS total_revenue_cny
+    c.region,
+    SUM(o.net_amount * er.rate_to_cny) AS revenue_rmb,
+    COUNT(*) AS order_count
 FROM sales_orders o
-JOIN exchange_rates r
-  ON DATE_FORMAT(o.order_date, '%Y-%m-01') = r.rate_date
- AND o.currency = r.currency
+JOIN dim_customers c ON o.customer_id = c.customer_id
+JOIN exchange_rates er
+    ON o.order_date = er.rate_date
+   AND o.currency = er.currency
 WHERE o.order_status = 'completed'
-GROUP BY o.region
-ORDER BY total_revenue_cny DESC;
+GROUP BY c.region
+ORDER BY revenue_rmb DESC;
 
--- 6. 第一季度总费用
+-- 验证 4：产品线毛利计算
 SELECT
-    SUM(rd_expense + selling_expense + admin_expense + finance_expense) AS total_expense
-FROM finance_expenses
-WHERE expense_date >= '2026-01-01'
-  AND expense_date < '2026-04-01';
+    p.product_line,
+    SUM(o.net_amount) AS revenue,
+    SUM((p.material_cost + p.labor_cost) * o.quantity) AS product_cost,
+    SUM(o.net_amount - (p.material_cost + p.labor_cost) * o.quantity) AS gross_profit,
+    SUM(o.net_amount - (p.material_cost + p.labor_cost) * o.quantity)
+      / SUM(o.net_amount) AS gross_margin_rate
+FROM sales_orders o
+JOIN dim_products p ON o.product_id = p.product_id
+WHERE o.order_status = 'completed'
+GROUP BY p.product_line;
 
+-- 验证 5：按月汇总费用
+SELECT
+    DATE_FORMAT(expense_date, '%Y-%m') AS month,
+    SUM(rd_expense) AS total_rd,
+    SUM(selling_expense) AS total_selling,
+    SUM(admin_expense) AS total_admin,
+    SUM(finance_expense) AS total_finance
+FROM finance_expenses
+GROUP BY DATE_FORMAT(expense_date, '%Y-%m')
+ORDER BY month;

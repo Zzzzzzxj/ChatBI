@@ -1,6 +1,16 @@
 USE chatbi_mvp;
 
--- 步骤 4：插入模拟数据
+-- 关闭外键检查，避免删除顺序问题
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- 清空现有数据
+DELETE FROM sales_orders;
+DELETE FROM exchange_rates;
+DELETE FROM finance_expenses;
+DELETE FROM dim_products;
+DELETE FROM dim_customers;
+
+SET FOREIGN_KEY_CHECKS = 1;
 
 -- 客户数据
 INSERT INTO dim_customers VALUES
@@ -41,15 +51,4 @@ INSERT INTO finance_expenses VALUES
 (1, '2026-01-31', '销售部', 800000.00, 400000.00, 250000.00, 80000.00, 150000.00, 80000.00, 50000.00),
 (2, '2026-02-28', '销售部', 850000.00, 420000.00, 255000.00, 78000.00, 160000.00, 85000.00, 55000.00),
 (3, '2026-03-31', '销售部', 900000.00, 450000.00, 260000.00, 75000.00, 170000.00, 90000.00, 60000.00);
-
--- 步骤 5：快速验证数据是否写入成功
-SELECT 'dim_customers' AS table_name, COUNT(*) AS row_count FROM dim_customers
-UNION ALL
-SELECT 'dim_products', COUNT(*) FROM dim_products
-UNION ALL
-SELECT 'sales_orders', COUNT(*) FROM sales_orders
-UNION ALL
-SELECT 'exchange_rates', COUNT(*) FROM exchange_rates
-UNION ALL
-SELECT 'finance_expenses', COUNT(*) FROM finance_expenses;
 

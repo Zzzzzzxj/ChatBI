@@ -28,6 +28,12 @@ mysql -h 127.0.0.1 -P 3306 -u root -p < sql/02_seed_data.sql
 mysql -h 127.0.0.1 -P 3306 -u root -p < sql/03_validation_queries.sql
 ```
 
+如果数据库表已经存在，仅需要重新装载模拟数据，可以执行：
+
+```bash
+mysql -h 127.0.0.1 -P 3306 -u root -p chatbi_mvp < sql/04_reset_data.sql
+```
+
 ## Schema 生成
 
 安装依赖后可自动读取数据库结构并生成 Prompt 所需的 Schema 文本：
@@ -42,8 +48,8 @@ uv run python scripts/schema_generator.py
 `sql/03_validation_queries.sql` 用于验证数据环境是否满足后续 Text2SQL 的基础查询需求：
 
 - 核心表都有数据。
-- 可以查询已完成订单数量。
-- 可以按客户类型统计订单。
+- 可以按订单状态统计数量和金额。
 - 可以按产品线统计收入。
 - 可以按区域做人民币收入折算。
-- 可以统计第一季度总费用。
+- 可以按产品线计算毛利。
+- 可以按月汇总费用。
