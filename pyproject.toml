@@ -1,0 +1,11 @@
+[project]
+name = "chatbi"
+version = "0.1.0"
+description = "Enterprise ChatBI project"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pymysql>=1.1.1",
+    "python-dotenv>=1.0.1",
+]
+
