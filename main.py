@@ -7,6 +7,7 @@ ChatBI 命令行入口。
 import sys
 
 from database import DatabaseClient
+from error_analyzer import ErrorAnalyzer
 from llm_client import LLMClient
 from prompt_builder import build_prompt
 from query_parser import QueryParser
@@ -21,8 +22,15 @@ class ChatBISystem:
         self.llm = LLMClient()
         self.db = DatabaseClient()
         self.formatter = ResultFormatter()
+        self.analyzer = ErrorAnalyzer()
 
-    def run(self, user_question: str) -> dict:
+    def run(
+        self,
+        user_question: str,
+        use_few_shot: bool = True,
+        use_rules: bool = True,
+        use_guards: bool = True,
+    ) -> dict:
         """执行一次自然语言到查询结果的完整流程。"""
         parsed = self.parser.parse(user_question)
         if not self.parser.validate(parsed):
@@ -32,7 +40,12 @@ class ChatBISystem:
                 "error": "请输入有效问题。",
             }
 
-        system_message, prompt = build_prompt(parsed["original_question"])
+        system_message, prompt = build_prompt(
+            parsed["original_question"],
+            use_few_shot=use_few_shot,
+            use_rules=use_rules,
+            use_guards=use_guards,
+        )
 
         try:
             sql = self.llm.generate_sql(system_message, prompt)
@@ -43,6 +56,8 @@ class ChatBISystem:
                 "error": str(exc),
             }
 
+        diagnostics = self.analyzer.analyze(parsed["original_question"], sql)
+
         try:
             columns, rows = self.db.execute(sql)
             return {
@@ -52,13 +67,20 @@ class ChatBISystem:
                 "columns": columns,
                 "rows": rows,
                 "formatted": self.formatter.format(columns, rows),
+                "diagnostics": diagnostics,
             }
         except Exception as exc:
+            diagnostics = self.analyzer.analyze(
+                parsed["original_question"],
+                sql,
+                execution_error=str(exc),
+            )
             return {
                 "success": False,
                 "error_type": "database",
                 "error": str(exc),
                 "sql": sql,
+                "diagnostics": diagnostics,
             }
 
 
@@ -71,10 +93,18 @@ def print_result(result: dict) -> None:
     if result["success"]:
         print("\nResult:")
         print(result["formatted"])
+        if not result.get("diagnostics", {}).get("ok", True):
+            print("\nDiagnostics:")
+            for issue in result["diagnostics"]["issues"]:
+                print(f"- {issue['type']}: {issue['reason']}")
         return
 
     print("\nError:")
     print(f"[{result['error_type']}] {result['error']}")
+    if result.get("diagnostics", {}).get("issues"):
+        print("\nDiagnostics:")
+        for issue in result["diagnostics"]["issues"]:
+            print(f"- {issue['type']}: {issue['reason']}；{issue['suggestion']}")
 
 
 def run_cli() -> None:

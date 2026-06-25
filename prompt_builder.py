@@ -74,30 +74,56 @@ SQL：SELECT SUM(rd_expense + selling_expense + admin_expense + finance_expense)
 示例4：
 问题：按产品线统计总收入
 SQL：SELECT p.product_line, SUM(o.net_amount * er.rate_to_cny) AS revenue_rmb FROM sales_orders o JOIN dim_products p ON o.product_id = p.product_id JOIN exchange_rates er ON o.order_date = er.rate_date AND o.currency = er.currency WHERE o.order_status = 'completed' GROUP BY p.product_line;
+
+示例5：
+问题：各产品线的毛利率是多少
+SQL：SELECT p.product_line, SUM(o.net_amount * er.rate_to_cny - (p.material_cost + p.labor_cost) * o.quantity) / NULLIF(SUM(o.net_amount * er.rate_to_cny), 0) AS gross_margin_rate FROM sales_orders o JOIN dim_products p ON o.product_id = p.product_id JOIN exchange_rates er ON o.order_date = er.rate_date AND o.currency = er.currency WHERE o.order_status = 'completed' GROUP BY p.product_line;
 """
 
 
 BUSINESS_RULES = """
 【业务规则】
-1. 收入、销售额默认使用 sales_orders.net_amount，不使用 gross_amount。
-2. 成本默认使用 dim_products.material_cost + dim_products.labor_cost。
+1. 收入、销售额、营收默认使用 sales_orders.net_amount，不使用 gross_amount，除非用户明确要求含税金额。
+2. 成本默认使用 dim_products.material_cost + dim_products.labor_cost，不使用 standard_cost 代替实际成本。
 3. 统计收入、订单量、客单价等销售指标时，必须过滤 order_status = 'completed'。
 4. 查询收入、销售额、营收、回款等金额汇总时，默认输出人民币口径，必须通过 order_date 和 currency 关联 exchange_rates，使用 rate_to_cny 折算。
 5. 费用汇总时，selling_expense 已包含 marketing_expense、logistics_expense、warranty_expense，不要重复相加。
 6. 毛利 = net_amount - (material_cost + labor_cost) * quantity。
+7. 毛利率 = 毛利 / 收入，分母使用 NULLIF 防止除零。
+8. “最近 N 个月”使用 DATE_SUB(CURDATE(), INTERVAL N MONTH) 作为起始边界。
 """
 
 
-def build_prompt(user_question: str, use_few_shot: bool = True) -> tuple[str, str]:
+ERROR_GUARDS = """
+【错误防护】
+- 字段选择：金额字段先判断含税/不含税；默认收入用 net_amount，默认成本用 material_cost + labor_cost。
+- 关联路径：涉及产品线、技术路线、产品分类时必须 JOIN dim_products；涉及客户类型、行业、国家、大区时必须 JOIN dim_customers。
+- 汇率换算：收入、销售额、营收、毛利等金额跨币种汇总时必须 JOIN exchange_rates，条件为 order_date = rate_date 且 currency 相等。
+- 过滤条件：销售收入、订单数量、毛利、客单价等销售指标必须包含 order_status = 'completed'。
+- 时间边界：月份、季度、最近 N 个月使用闭开区间，避免重复统计边界日期。
+- 聚合维度：SELECT 中的非聚合字段必须全部出现在 GROUP BY 中。
+- 查询安全：只能输出 SELECT 查询，不能输出会修改结构或数据的语句。
+"""
+
+
+def build_prompt(
+    user_question: str,
+    use_few_shot: bool = True,
+    use_rules: bool = True,
+    use_guards: bool = True,
+) -> tuple[str, str]:
     """构造发送给大模型的 system message 与 user prompt。"""
     system_message = (
         "你是企业经营分析场景下的 SQL 生成助手，"
-        "只能根据给定 Schema 生成只读 MySQL 查询。"
+        "只能根据给定 Schema 生成只读 MySQL 查询，并严格遵守业务口径和防错约束。"
     )
 
     prompt = f"""【数据库 Schema】
 {SCHEMA}
+"""
 
+    if use_rules:
+        prompt += f"""
 {BUSINESS_RULES}
 """
 
@@ -105,6 +131,11 @@ def build_prompt(user_question: str, use_few_shot: bool = True) -> tuple[str, st
         prompt += f"""
 【示例】
 {FEW_SHOT_EXAMPLES}
+"""
+
+    if use_guards:
+        prompt += f"""
+{ERROR_GUARDS}
 """
 
     prompt += f"""
@@ -117,6 +148,7 @@ def build_prompt(user_question: str, use_few_shot: bool = True) -> tuple[str, st
 3. 表名和字段名必须来自上方 Schema。
 4. 涉及多表时必须写出清晰的 JOIN 条件。
 5. GROUP BY 字段必须覆盖 SELECT 中的非聚合字段。
+6. 涉及业务指标时优先遵守【业务规则】和【错误防护】。
 
 请直接输出 SQL：
 """
