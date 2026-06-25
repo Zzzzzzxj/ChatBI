@@ -111,6 +111,7 @@ def build_prompt(
     use_few_shot: bool = True,
     use_rules: bool = True,
     use_guards: bool = True,
+    indicator_knowledge: str = "",
 ) -> tuple[str, str]:
     """构造发送给大模型的 system message 与 user prompt。"""
     system_message = (
@@ -138,6 +139,11 @@ def build_prompt(
 {ERROR_GUARDS}
 """
 
+    if indicator_knowledge:
+        prompt += f"""
+{indicator_knowledge}
+"""
+
     prompt += f"""
 【用户问题】
 {user_question}
@@ -149,6 +155,7 @@ def build_prompt(
 4. 涉及多表时必须写出清晰的 JOIN 条件。
 5. GROUP BY 字段必须覆盖 SELECT 中的非聚合字段。
 6. 涉及业务指标时优先遵守【业务规则】和【错误防护】。
+7. 如果提供了【指标知识】，优先使用其中的定义、公式、数据来源和强制过滤条件。
 
 请直接输出 SQL：
 """

@@ -8,6 +8,7 @@ import sys
 
 from database import DatabaseClient
 from error_analyzer import ErrorAnalyzer
+from indicator_knowledge import IndicatorKnowledge
 from llm_client import LLMClient
 from prompt_builder import build_prompt
 from query_parser import QueryParser
@@ -23,6 +24,7 @@ class ChatBISystem:
         self.db = DatabaseClient()
         self.formatter = ResultFormatter()
         self.analyzer = ErrorAnalyzer()
+        self.indicator_knowledge = IndicatorKnowledge()
 
     def run(
         self,
@@ -30,6 +32,7 @@ class ChatBISystem:
         use_few_shot: bool = True,
         use_rules: bool = True,
         use_guards: bool = True,
+        use_indicator_knowledge: bool = True,
     ) -> dict:
         """执行一次自然语言到查询结果的完整流程。"""
         parsed = self.parser.parse(user_question)
@@ -40,11 +43,18 @@ class ChatBISystem:
                 "error": "请输入有效问题。",
             }
 
+        indicator_context = {"detected_indicators": [], "indicator_block": ""}
+        if use_indicator_knowledge:
+            indicator_context = self.indicator_knowledge.get_indicator_context(
+                parsed["original_question"]
+            )
+
         system_message, prompt = build_prompt(
             parsed["original_question"],
             use_few_shot=use_few_shot,
             use_rules=use_rules,
             use_guards=use_guards,
+            indicator_knowledge=indicator_context["indicator_block"],
         )
 
         try:
@@ -54,6 +64,10 @@ class ChatBISystem:
                 "success": False,
                 "error_type": "llm",
                 "error": str(exc),
+                "metadata": {
+                    "detected_indicators": indicator_context["detected_indicators"],
+                    "used_indicator_knowledge": use_indicator_knowledge,
+                },
             }
 
         diagnostics = self.analyzer.analyze(parsed["original_question"], sql)
@@ -68,6 +82,10 @@ class ChatBISystem:
                 "rows": rows,
                 "formatted": self.formatter.format(columns, rows),
                 "diagnostics": diagnostics,
+                "metadata": {
+                    "detected_indicators": indicator_context["detected_indicators"],
+                    "used_indicator_knowledge": use_indicator_knowledge,
+                },
             }
         except Exception as exc:
             diagnostics = self.analyzer.analyze(
@@ -81,6 +99,10 @@ class ChatBISystem:
                 "error": str(exc),
                 "sql": sql,
                 "diagnostics": diagnostics,
+                "metadata": {
+                    "detected_indicators": indicator_context["detected_indicators"],
+                    "used_indicator_knowledge": use_indicator_knowledge,
+                },
             }
 
 
