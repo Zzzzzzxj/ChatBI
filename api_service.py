@@ -151,6 +151,7 @@ def read_root() -> dict[str, str]:
     return {
         "name": "ChatBI API",
         "docs": "/docs",
+        "web": "/static/index.html",
         "health": "/health",
         "query": "/api/v1/query",
         "query_stream": "/api/v1/query/stream",
