@@ -5,6 +5,7 @@
 """
 
 import re
+from typing import Generator
 
 from openai import OpenAI
 
@@ -41,6 +42,34 @@ class LLMClient:
         response = self.client.chat.completions.create(**request_args)
         raw_output = response.choices[0].message.content or ""
         return self._extract_sql(raw_output)
+
+    def generate_sql_stream(
+        self,
+        system_message: str,
+        prompt: str,
+    ) -> Generator[str, None, None]:
+        """调用模型流式生成 SQL，逐段返回原始文本。"""
+        request_args = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "stream": True,
+        }
+        if self.extra_body:
+            request_args["extra_body"] = self.extra_body
+
+        stream = self.client.chat.completions.create(**request_args)
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            content = delta.content if delta and delta.content is not None else None
+            if content:
+                yield content
 
     @staticmethod
     def _extract_sql(raw_output: str) -> str:

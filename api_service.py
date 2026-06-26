@@ -7,6 +7,7 @@ ChatBI API 服务入口。
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from time import perf_counter
 from typing import Any
 
@@ -15,7 +16,8 @@ from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from main import ChatBISystem
@@ -47,6 +49,9 @@ app.add_middleware(
 )
 
 system = ChatBISystem()
+static_dir = Path(__file__).parent / "static"
+if static_dir.is_dir():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 
 class QueryRequest(BaseModel):
@@ -148,6 +153,7 @@ def read_root() -> dict[str, str]:
         "docs": "/docs",
         "health": "/health",
         "query": "/api/v1/query",
+        "query_stream": "/api/v1/query/stream",
     }
 
 
@@ -215,6 +221,35 @@ def query_chatbi(payload: QueryRequest) -> QuerySuccessResponse | JSONResponse:
         formatted=result["formatted"],
         diagnostics=result.get("diagnostics", {}),
         metadata=metadata,
+    )
+
+
+@app.post(
+    "/api/v1/query/stream",
+    tags=["query"],
+    summary="流式执行自然语言查询",
+)
+def query_chatbi_stream(payload: QueryRequest) -> StreamingResponse:
+    """执行自然语言查询，以 SSE 事件逐步返回 SQL 和结果。"""
+    logger.info("Received stream question: %s", payload.question)
+
+    def event_generator():
+        yield from system.run_stream(
+            user_question=payload.question,
+            use_few_shot=payload.use_few_shot,
+            use_rules=payload.use_rules,
+            use_guards=payload.use_guards,
+            use_indicator_knowledge=payload.use_indicator_knowledge,
+        )
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

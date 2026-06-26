@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ChatBI</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f6f8;
+      color: #1f2933;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #f4f6f8;
+    }
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 28px 18px 44px;
+    }
+    header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+    h1 {
+      font-size: 24px;
+      margin: 0;
+      letter-spacing: 0;
+    }
+    .status {
+      color: #52616f;
+      font-size: 13px;
+    }
+    form {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    input {
+      min-width: 0;
+      height: 44px;
+      border: 1px solid #c9d3df;
+      border-radius: 6px;
+      padding: 0 14px;
+      font-size: 15px;
+      background: #fff;
+    }
+    button {
+      height: 44px;
+      border: 0;
+      border-radius: 6px;
+      padding: 0 18px;
+      background: #2563eb;
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled {
+      background: #9fb5de;
+      cursor: default;
+    }
+    .panel {
+      background: #fff;
+      border: 1px solid #d9e2ec;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .label {
+      margin: 0 0 8px;
+      color: #52616f;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    pre {
+      margin: 0;
+      padding: 14px;
+      overflow: auto;
+      border-radius: 6px;
+      background: #17212b;
+      color: #d7e2ee;
+      min-height: 68px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid #e5edf4;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #f7fafc;
+      color: #34495e;
+    }
+    .empty {
+      color: #697b8c;
+      font-size: 14px;
+    }
+    .error {
+      color: #b42318;
+      background: #fff1f0;
+      border-color: #ffccc7;
+    }
+    @media (max-width: 640px) {
+      header, form {
+        grid-template-columns: 1fr;
+        display: grid;
+      }
+      button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>ChatBI</h1>
+      <div id="status" class="status">Ready</div>
+    </header>
+
+    <form id="query-form">
+      <input id="question" autocomplete="off" value="查询已完成订单的总数量">
+      <button id="submit" type="submit">Run</button>
+    </form>
+
+    <section class="panel">
+      <p class="label">SQL</p>
+      <pre id="sql"></pre>
+    </section>
+
+    <section id="error-panel" class="panel error" hidden>
+      <p class="label">Error</p>
+      <div id="error"></div>
+    </section>
+
+    <section class="panel">
+      <p class="label">Result</p>
+      <div id="result" class="empty">No result yet.</div>
+    </section>
+  </main>
+
+  <script>
+    const form = document.querySelector("#query-form");
+    const questionInput = document.querySelector("#question");
+    const submitButton = document.querySelector("#submit");
+    const statusNode = document.querySelector("#status");
+    const sqlNode = document.querySelector("#sql");
+    const resultNode = document.querySelector("#result");
+    const errorPanel = document.querySelector("#error-panel");
+    const errorNode = document.querySelector("#error");
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const question = questionInput.value.trim();
+      if (!question) return;
+
+      submitButton.disabled = true;
+      statusNode.textContent = "Generating SQL...";
+      sqlNode.textContent = "";
+      resultNode.textContent = "Waiting for result...";
+      resultNode.className = "empty";
+      errorPanel.hidden = true;
+      errorNode.textContent = "";
+
+      try {
+        const response = await fetch("/api/v1/query/stream", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({question})
+        });
+
+        if (!response.ok || !response.body) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const {done, value} = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, {stream: true});
+
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() || "";
+          for (const part of parts) {
+            handleEvent(part);
+          }
+        }
+
+        statusNode.textContent = "Done";
+      } catch (error) {
+        showError(error.message);
+        statusNode.textContent = "Failed";
+      } finally {
+        submitButton.disabled = false;
+      }
+    });
+
+    function handleEvent(rawEvent) {
+      const lines = rawEvent.split("\n");
+      const eventType = (lines.find(line => line.startsWith("event:")) || "").slice(6).trim();
+      const dataLine = lines.find(line => line.startsWith("data:"));
+      if (!eventType || !dataLine) return;
+
+      const payload = JSON.parse(dataLine.slice(5));
+      if (eventType === "sql_chunk") {
+        sqlNode.textContent += payload.content || "";
+      } else if (eventType === "sql_done") {
+        sqlNode.textContent = payload.sql || sqlNode.textContent;
+        statusNode.textContent = "Executing SQL...";
+      } else if (eventType === "result") {
+        renderTable(payload.columns || [], payload.rows || []);
+      } else if (eventType === "error") {
+        showError(payload.error || "Unknown error");
+      }
+    }
+
+    function renderTable(columns, rows) {
+      if (!rows.length) {
+        resultNode.textContent = "Empty result.";
+        resultNode.className = "empty";
+        return;
+      }
+
+      const table = document.createElement("table");
+      const thead = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      for (const column of columns) {
+        const th = document.createElement("th");
+        th.textContent = column;
+        headRow.appendChild(th);
+      }
+      thead.appendChild(headRow);
+
+      const tbody = document.createElement("tbody");
+      for (const row of rows) {
+        const tr = document.createElement("tr");
+        for (const column of columns) {
+          const td = document.createElement("td");
+          td.textContent = row[column] ?? "";
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+
+      table.appendChild(thead);
+      table.appendChild(tbody);
+      resultNode.className = "";
+      resultNode.replaceChildren(table);
+    }
+
+    function showError(message) {
+      errorPanel.hidden = false;
+      errorNode.textContent = message;
+    }
+  </script>
+</body>
+</html>
