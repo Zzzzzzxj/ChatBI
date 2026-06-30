@@ -27,6 +27,7 @@ LLM_CONFIG: dict[str, Any] = {
     "api_key": os.getenv("OPENAI_API_KEY"),
     "base_url": os.getenv("OPENAI_BASE_URL", "https://api.siliconflow.cn/v1"),
     "model": os.getenv("LLM_MODEL", "Qwen/Qwen3.5-27B"),
+    "embedding_model": os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3"),
     "temperature": float(os.getenv("LLM_TEMPERATURE", "0.1")),
     "max_tokens": int(os.getenv("LLM_MAX_TOKENS", "1000")),
     "extra_body": {"enable_thinking": False},
