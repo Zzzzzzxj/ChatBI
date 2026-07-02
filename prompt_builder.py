@@ -112,6 +112,7 @@ def build_prompt(
     use_rules: bool = True,
     use_guards: bool = True,
     indicator_knowledge: str = "",
+    use_schema_linking: bool = False,
 ) -> tuple[str, str]:
     """构造发送给大模型的 system message 与 user prompt。"""
     system_message = (
@@ -119,8 +120,19 @@ def build_prompt(
         "只能根据给定 Schema 生成只读 MySQL 查询，并严格遵守业务口径和防错约束。"
     )
 
+    schema = SCHEMA
+    if use_schema_linking:
+        try:
+            from schema_linker import build_dynamic_prompt_schema
+
+            dynamic_schema = build_dynamic_prompt_schema(user_question)
+            if dynamic_schema:
+                schema = dynamic_schema
+        except Exception:
+            schema = SCHEMA
+
     prompt = f"""【数据库 Schema】
-{SCHEMA}
+{schema}
 """
 
     if use_rules:

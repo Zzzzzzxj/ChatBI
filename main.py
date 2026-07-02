@@ -33,6 +33,7 @@ class ChatBISystem:
         use_rules: bool = True,
         use_guards: bool = True,
         use_indicator_knowledge: bool = True,
+        use_schema_linking: bool = False,
     ) -> dict:
         """执行一次自然语言到查询结果的完整流程。"""
         parsed = self.parser.parse(user_question)
@@ -55,6 +56,7 @@ class ChatBISystem:
             use_rules=use_rules,
             use_guards=use_guards,
             indicator_knowledge=indicator_context["indicator_block"],
+            use_schema_linking=use_schema_linking,
         )
 
         try:
@@ -67,6 +69,7 @@ class ChatBISystem:
                 "metadata": {
                     "detected_indicators": indicator_context["detected_indicators"],
                     "used_indicator_knowledge": use_indicator_knowledge,
+                    "used_schema_linking": use_schema_linking,
                 },
             }
 
@@ -85,6 +88,7 @@ class ChatBISystem:
                 "metadata": {
                     "detected_indicators": indicator_context["detected_indicators"],
                     "used_indicator_knowledge": use_indicator_knowledge,
+                    "used_schema_linking": use_schema_linking,
                 },
             }
         except Exception as exc:
@@ -102,6 +106,7 @@ class ChatBISystem:
                 "metadata": {
                     "detected_indicators": indicator_context["detected_indicators"],
                     "used_indicator_knowledge": use_indicator_knowledge,
+                    "used_schema_linking": use_schema_linking,
                 },
             }
 
@@ -112,6 +117,7 @@ class ChatBISystem:
         use_rules: bool = True,
         use_guards: bool = True,
         use_indicator_knowledge: bool = True,
+        use_schema_linking: bool = False,
     ) -> Generator[str, None, None]:
         """以 SSE 事件形式流式执行一次自然语言查询。"""
         parsed = self.parser.parse(user_question)
@@ -137,6 +143,7 @@ class ChatBISystem:
             use_rules=use_rules,
             use_guards=use_guards,
             indicator_knowledge=indicator_context["indicator_block"],
+            use_schema_linking=use_schema_linking,
         )
 
         sql_parts = []
@@ -153,6 +160,7 @@ class ChatBISystem:
                     "metadata": {
                         "detected_indicators": indicator_context["detected_indicators"],
                         "used_indicator_knowledge": use_indicator_knowledge,
+                        "used_schema_linking": use_schema_linking,
                     },
                 },
             )
@@ -175,6 +183,7 @@ class ChatBISystem:
                     "metadata": {
                         "detected_indicators": indicator_context["detected_indicators"],
                         "used_indicator_knowledge": use_indicator_knowledge,
+                        "used_schema_linking": use_schema_linking,
                     },
                 },
             )
@@ -194,6 +203,7 @@ class ChatBISystem:
                     "metadata": {
                         "detected_indicators": indicator_context["detected_indicators"],
                         "used_indicator_knowledge": use_indicator_knowledge,
+                        "used_schema_linking": use_schema_linking,
                     },
                 },
             )

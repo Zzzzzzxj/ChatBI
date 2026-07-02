@@ -62,6 +62,7 @@ class QueryRequest(BaseModel):
     use_rules: bool = Field(default=True, description="是否启用业务规则")
     use_guards: bool = Field(default=True, description="是否启用错误防护")
     use_indicator_knowledge: bool = Field(default=True, description="是否注入指标知识")
+    use_schema_linking: bool = Field(default=False, description="是否启用动态 Schema 上下文")
 
 
 class HealthResponse(BaseModel):
@@ -190,6 +191,7 @@ def query_chatbi(payload: QueryRequest) -> QuerySuccessResponse | JSONResponse:
         use_rules=payload.use_rules,
         use_guards=payload.use_guards,
         use_indicator_knowledge=payload.use_indicator_knowledge,
+        use_schema_linking=payload.use_schema_linking,
     )
     duration_ms = round((perf_counter() - started_at) * 1000, 2)
 
@@ -241,6 +243,7 @@ def query_chatbi_stream(payload: QueryRequest) -> StreamingResponse:
             use_rules=payload.use_rules,
             use_guards=payload.use_guards,
             use_indicator_knowledge=payload.use_indicator_knowledge,
+            use_schema_linking=payload.use_schema_linking,
         )
 
     return StreamingResponse(
